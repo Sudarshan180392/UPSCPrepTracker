@@ -10,7 +10,7 @@ import {
   insertMock, deleteMock as deleteMockDB,
   insertCA, updateCA, deleteCA, batchUpdateCA,
   deleteAllUserData, bulkImportData,
-  fetchProfile, updateProfile, upsertDailySummary,
+  fetchProfile, updateProfile, createProfile, upsertDailySummary,
   fetchCommunityFeed, fetchLeaderboard, toggleCheer,
 } from './supabaseData';
 import {
@@ -2011,7 +2011,7 @@ export default function UPSCTracker() {
         if (!currentProfile) {
           const defaultName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'UPSC Aspirant';
           const defaultAvatar = user.user_metadata?.avatar_url || null;
-          await updateProfile(userId, { displayName: defaultName, avatarUrl: defaultAvatar, isPublic: false });
+          await createProfile(userId, { displayName: defaultName, avatarUrl: defaultAvatar, isPublic: false });
           const retryProfile = await fetchProfile(userId);
           if (!retryProfile.error && !cancelled) {
             currentProfile = retryProfile.data;

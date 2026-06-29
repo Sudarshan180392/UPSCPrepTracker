@@ -540,6 +540,32 @@ export async function fetchProfile(userId) {
 }
 
 /**
+ * Create a user's community profile.
+ * @param {string} userId
+ * @param {object} profile - Profile fields
+ * @returns {{ data: object|null, error: string|null }}
+ */
+export async function createProfile(userId, profile) {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .insert({
+        id: userId,
+        display_name: profile.displayName || 'UPSC Aspirant',
+        avatar_url: profile.avatarUrl || null,
+        is_public: profile.isPublic ?? false,
+      })
+      .select()
+      .single()
+
+    if (error) return { data: null, error: error.message }
+    return { data, error: null }
+  } catch (err) {
+    return { data: null, error: err.message }
+  }
+}
+
+/**
  * Update a user's community profile (display name, avatar, or privacy toggle).
  * @param {string} userId
  * @param {object} updates - Fields to update
@@ -547,14 +573,15 @@ export async function fetchProfile(userId) {
  */
 export async function updateProfile(userId, updates) {
   try {
-    const mapped = { id: userId }
+    const mapped = {}
     if ('displayName' in updates) mapped.display_name = updates.displayName
     if ('avatarUrl' in updates) mapped.avatar_url = updates.avatarUrl
     if ('isPublic' in updates) mapped.is_public = updates.isPublic
 
     const { error } = await supabase
       .from('profiles')
-      .upsert(mapped, { onConflict: 'id' })
+      .update(mapped)
+      .eq('id', userId)
 
     return { error: error?.message || null }
   } catch (err) {
