@@ -514,3 +514,227 @@ export async function bulkImportData(userId, data) {
     return { error: err.message }
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   COMMUNITY FEATURES
+   ═══════════════════════════════════════════════════════════════ */
+
+/**
+ * Fetch a user's community profile.
+ * @param {string} userId
+ * @returns {{ data: object|null, error: string|null }}
+ */
+export async function fetchProfile(userId) {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle()
+
+    if (error) return { data: null, error: error.message }
+    return { data, error: null }
+  } catch (err) {
+    return { data: null, error: err.message }
+  }
+}
+
+/**
+ * Update a user's community profile (display name, avatar, or privacy toggle).
+ * @param {string} userId
+ * @param {object} updates - Fields to update
+ * @returns {{ error: string|null }}
+ */
+export async function updateProfile(userId, updates) {
+  try {
+    const mapped = {}
+    if ('displayName' in updates) mapped.display_name = updates.displayName
+    if ('avatarUrl' in updates) mapped.avatar_url = updates.avatarUrl
+    if ('isPublic' in updates) mapped.is_public = updates.isPublic
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(mapped)
+      .eq('id', userId)
+
+    return { error: error?.message || null }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+/**
+ * Upsert a daily study summary.
+ * @param {string} userId
+ * @param {number} dayNumber
+ * @param {string} date - YYYY-MM-DD
+ * @param {number} totalHours
+ * @param {string[]} subjects - Array of active subjects studied
+ * @param {number} streak
+ * @returns {{ error: string|null }}
+ */
+export async function upsertDailySummary(userId, dayNumber, date, totalHours, subjects, streak) {
+  try {
+    const { error } = await supabase
+      .from('daily_summaries')
+      .upsert({
+        user_id: userId,
+        day_number: dayNumber,
+        date,
+        total_hours: totalHours,
+        subjects,
+        streak,
+      }, { onConflict: 'user_id,day_number' })
+
+    return { error: error?.message || null }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+/**
+ * Fetch the community feed from the secure masked database view public_daily_activities.
+ * Joins user cheers (reactions) client-side.
+ * @param {string} currentUserId - The active user's ID
+ * @returns {{ data: array|null, error: string|null }}
+ */
+export async function fetchCommunityFeed(currentUserId) {
+  try {
+    // 1. Fetch recent activities from secure view
+    const { data: activities, error: actErr } = await supabase
+      .from('public_daily_activities')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    if (actErr) return { data: null, error: actErr.message }
+    if (!activities || activities.length === 0) return { data: [], error: null }
+
+    // 2. Fetch all cheers for these summaries
+    const summaryIds = activities.map(a => a.id)
+    const { data: cheers, error: cheerErr } = await supabase
+      .from('cheers')
+      .select('*')
+      .in('summary_id', summaryIds)
+
+    if (cheerErr) return { data: null, error: cheerErr.message }
+
+    // 3. Group cheers by summary_id client-side
+    const cheersMap = {}
+    for (const c of (cheers || [])) {
+      if (!cheersMap[c.summary_id]) cheersMap[c.summary_id] = []
+      cheersMap[c.summary_id].push(c)
+    }
+
+    // 4. Enrich activities with reaction counts and user's own cheer states
+    const enriched = activities.map(act => {
+      const actCheers = cheersMap[act.id] || []
+      
+      // Count totals for each emoji (e.g. { '👏': 3, '🔥': 1 })
+      const counts = {}
+      // Track if the current user reacted (e.g. { '👏': true })
+      const userReacted = {}
+
+      for (const c of actCheers) {
+        counts[c.emoji] = (counts[c.emoji] || 0) + 1
+        if (c.user_id === currentUserId) {
+          userReacted[c.emoji] = true
+        }
+      }
+
+      return {
+        ...act,
+        cheers: counts,
+        userReacted,
+      }
+    })
+
+    return { data: enriched, error: null }
+  } catch (err) {
+    return { data: null, error: err.message }
+  }
+}
+
+/**
+ * Fetch leaderboard ranking of public users based on total hours studied.
+ * @returns {{ data: array|null, error: string|null }}
+ */
+export async function fetchLeaderboard() {
+  try {
+    // Fetch all summaries from public view where the user has opted in
+    const { data, error } = await supabase
+      .from('public_daily_activities')
+      .select('user_id, display_name, avatar_url, total_hours')
+      .eq('is_public', true)
+
+    if (error) return { data: null, error: error.message }
+    if (!data || data.length === 0) return { data: [], error: null }
+
+    // Group and aggregate hours per user in Javascript
+    const userMap = {}
+    for (const row of data) {
+      if (!userMap[row.user_id]) {
+        userMap[row.user_id] = {
+          userId: row.user_id,
+          displayName: row.display_name || 'UPSC Aspirant',
+          avatarUrl: row.avatar_url,
+          totalHours: 0,
+        }
+      }
+      userMap[row.user_id].totalHours += row.total_hours || 0
+    }
+
+    // Convert map to array, round values, and sort descending
+    const leaderboard = Object.values(userMap)
+      .map(u => ({ ...u, totalHours: +u.totalHours.toFixed(1) }))
+      .sort((a, b) => b.totalHours - a.totalHours)
+
+    return { data: leaderboard, error: null }
+  } catch (err) {
+    return { data: null, error: err.message }
+  }
+}
+
+/**
+ * Toggle an emoji reaction (cheer) on a summary.
+ * @param {string} userId
+ * @param {string} summaryId
+ * @param {string} emoji
+ * @returns {{ error: string|null }}
+ */
+export async function toggleCheer(userId, summaryId, emoji) {
+  try {
+    // Check if cheer already exists
+    const { data: existing, error: checkErr } = await supabase
+      .from('cheers')
+      .select('id')
+      .eq('summary_id', summaryId)
+      .eq('user_id', userId)
+      .eq('emoji', emoji)
+      .maybeSingle()
+
+    if (checkErr) return { error: checkErr.message }
+
+    if (existing) {
+      // Delete existing cheer (unlike)
+      const { error: delErr } = await supabase
+        .from('cheers')
+        .delete()
+        .eq('id', existing.id)
+      return { error: delErr?.message || null }
+    } else {
+      // Insert new cheer (like)
+      const { error: insErr } = await supabase
+        .from('cheers')
+        .insert({
+          summary_id: summaryId,
+          user_id: userId,
+          emoji,
+        })
+      return { error: insErr?.message || null }
+    }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+

@@ -10,6 +10,8 @@ import {
   insertMock, deleteMock as deleteMockDB,
   insertCA, updateCA, deleteCA, batchUpdateCA,
   deleteAllUserData, bulkImportData,
+  fetchProfile, updateProfile, upsertDailySummary,
+  fetchCommunityFeed, fetchLeaderboard, toggleCheer,
 } from './supabaseData';
 import {
   PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis,
@@ -39,6 +41,7 @@ const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: '📊' },
   { id: 'daysheet',  label: 'Day Sheet',  icon: '📅' },
   { id: 'summary',   label: 'Summary',    icon: '📈' },
+  { id: 'community', label: 'Community',  icon: '🤝' },
   { id: 'mocks',     label: 'Mocks',      icon: '🎯' },
   { id: 'ca',        label: 'CA Log',     icon: '📰' },
   { id: 'settings',  label: 'Settings',   icon: '⚙️' },
@@ -977,6 +980,268 @@ function PeriodSummary({ data }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   COMMUNITY TAB PANEL
+   ═══════════════════════════════════════════════════════════════ */
+
+function CommunityPanel() {
+  const { supabase, user } = useAuth();
+  const userId = user.id;
+
+  const [feed, setFeed] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(true);
+  const [cheeringId, setCheeringId] = useState(null);
+
+  const loadFeed = useCallback(async () => {
+    const res = await fetchCommunityFeed(userId);
+    if (!res.error) {
+      setFeed(res.data || []);
+    }
+    setLoading(false);
+  }, [userId]);
+
+  const loadLeaderboard = useCallback(async () => {
+    setLeaderboardLoading(true);
+    const res = await fetchLeaderboard();
+    if (!res.error) {
+      setLeaderboard(res.data || []);
+    }
+    setLeaderboardLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadFeed();
+    loadLeaderboard();
+
+    // Subscribe to realtime updates on daily_summaries and cheers
+    const channel = supabase
+      .channel('community-db-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_summaries' }, () => {
+        loadFeed();
+        loadLeaderboard();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cheers' }, () => {
+        loadFeed();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadFeed, loadLeaderboard, supabase]);
+
+  const handleCheer = async (summaryId, emoji) => {
+    if (cheeringId) return; // prevent double clicks
+    setCheeringId(summaryId + '-' + emoji);
+    const res = await toggleCheer(userId, summaryId, emoji);
+    if (!res.error) {
+      await loadFeed();
+    }
+    setCheeringId(null);
+  };
+
+  const getRankEmoji = (index) => {
+    if (index === 0) return '🥇';
+    if (index === 1) return '🥈';
+    if (index === 2) return '🥉';
+    return `#${index + 1}`;
+  };
+
+  return (
+    <div className="grid lg:grid-cols-3 gap-6">
+      {/* ── Left Column: Leaderboard ── */}
+      <div className="lg:col-span-1 space-y-4">
+        <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/40 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              🏆 Consistency Leaderboard
+            </h3>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+            Ranks public users by total study hours logged over the last 30 days. Toggle sharing in Settings to participate!
+          </p>
+
+          {leaderboardLoading ? (
+            <div className="space-y-3 py-4">
+              {[0, 1, 2].map(i => (
+                <div key={i} className="flex items-center gap-3 animate-pulse" style={{ contentVisibility: 'auto' }}>
+                  <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3.5 bg-slate-200 dark:bg-slate-700 rounded w-24" />
+                    <div className="h-2.5 bg-slate-200 dark:bg-slate-700 rounded w-12" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : leaderboard.length === 0 ? (
+            <div className="text-center py-8 text-slate-400 dark:text-slate-500 text-sm">
+              No students are currently sharing their progress. Be the first in Settings!
+            </div>
+          ) : (
+            <div className="space-y-2.5 max-h-[450px] overflow-y-auto scrollbar-thin pr-1">
+              {leaderboard.map((userRow, i) => (
+                <div
+                  key={userRow.userId}
+                  className={`flex items-center justify-between p-3 rounded-xl border transition-all duration-300 ${
+                    userRow.userId === userId
+                      ? 'bg-indigo-50/50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-500/30'
+                      : 'bg-slate-50/30 dark:bg-slate-900/10 border-slate-100 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm font-bold ${
+                      i < 3
+                        ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                    }`}>
+                      {getRankEmoji(i)}
+                    </span>
+                    {userRow.avatarUrl ? (
+                      <img src={userRow.avatarUrl} alt={userRow.displayName} className="w-8 h-8 rounded-full ring-2 ring-indigo-500/20" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-sm font-bold text-white">
+                        {userRow.displayName[0]?.toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 block truncate max-w-[120px]">
+                        {userRow.displayName} {userRow.userId === userId && '(You)'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-extrabold text-indigo-600 dark:text-indigo-400">{userRow.totalHours}h</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 block">studied</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Right Column: Activity Feed ── */}
+      <div className="lg:col-span-2 space-y-4">
+        <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/40 p-5">
+          <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-4">
+            🤝 Study Accountability Feed
+          </h3>
+
+          {loading ? (
+            <div className="space-y-4 py-4">
+              {[0, 1].map(i => (
+                <div key={i} className="border border-slate-100 dark:border-slate-800 rounded-xl p-4 space-y-3 animate-pulse" style={{ contentVisibility: 'auto' }}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-28" />
+                      <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded w-16" />
+                    </div>
+                  </div>
+                  <div className="h-3.5 bg-slate-200 dark:bg-slate-700 rounded w-4/5" />
+                  <div className="flex gap-2">
+                    <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-12" />
+                    <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-12" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : feed.length === 0 ? (
+            <div className="text-center py-12 text-slate-400 dark:text-slate-500 text-sm">
+              No recent activity. Mark off some tasks on your Day Sheet to start the feed!
+            </div>
+          ) : (
+            <div className="space-y-4 max-h-[600px] overflow-y-auto scrollbar-thin pr-1">
+              {feed.map(act => {
+                const totalH = act.total_hours;
+                const activeSubjects = act.subjects || [];
+
+                return (
+                  <div
+                    key={act.id}
+                    className="p-4 rounded-xl border border-slate-200 dark:border-slate-700/50 bg-slate-50/20 dark:bg-slate-900/10 hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-300"
+                  >
+                    <div className="flex items-center justify-between gap-3 mb-2.5">
+                      <div className="flex items-center gap-2.5">
+                        {act.avatar_url ? (
+                          <img src={act.avatar_url} alt={act.display_name} className="w-8 h-8 rounded-full ring-2 ring-indigo-500/20" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold text-white">
+                            {act.display_name[0]?.toUpperCase()}
+                          </div>
+                        )}
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-semibold text-slate-900 dark:text-white">{act.display_name}</span>
+                            {act.user_id === userId && (
+                              <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded-full font-medium">You</span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500">{act.date}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-400">
+                          Day {act.day_number}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Check-in Message */}
+                    <div className="text-sm text-slate-700 dark:text-slate-300 mb-3 bg-white/40 dark:bg-slate-800/40 p-3 rounded-lg border border-slate-100 dark:border-slate-800/60">
+                      {act.is_public && totalH !== null ? (
+                        <p>
+                          Studied <span className="font-semibold text-indigo-600 dark:text-indigo-400">{activeSubjects.join(', ') || 'General subjects'}</span> for <span className="font-extrabold text-slate-900 dark:text-white">{totalH} hours</span>! 
+                          {act.streak > 0 && <span className="ml-1 text-amber-500">🔥 {act.streak}d streak</span>}
+                        </p>
+                      ) : (
+                        <p>
+                          Studied <span className="font-semibold text-slate-900 dark:text-slate-100">{activeSubjects.join(', ') || 'General subjects'}</span> today.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Cheers / Reactions */}
+                    <div className="flex gap-2">
+                      {['👏', '🔥', '👍'].map(emoji => {
+                        const count = act.cheers[emoji] || 0;
+                        const hasReacted = act.userReacted[emoji];
+                        const isCheering = cheeringId === `${act.id}-${emoji}`;
+
+                        return (
+                          <button
+                            key={emoji}
+                            onClick={() => handleCheer(act.id, emoji)}
+                            disabled={isCheering}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all duration-300 ${
+                              hasReacted
+                                ? 'bg-indigo-100/80 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 border-indigo-300 dark:border-indigo-500/40 scale-105'
+                                : 'bg-white dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700/50 hover:bg-slate-100 dark:hover:bg-slate-700/60'
+                            }`}
+                          >
+                            {isCheering ? (
+                              <span className="w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin inline-block" />
+                            ) : (
+                              <span>{emoji}</span>
+                            )}
+                            <span>{count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
    MOCK ANALYSIS TAB
    ═══════════════════════════════════════════════════════════════ */
 
@@ -1405,7 +1670,7 @@ function CurrentAffairsLog({ data, setData, addCAAndSync, removeCAAndSync, toggl
    SETTINGS TAB
    ═══════════════════════════════════════════════════════════════ */
 
-function SettingsPanel({ data, setData, addSubjectAndSync, removeSubjectAndSync }) {
+function SettingsPanel({ data, setData, addSubjectAndSync, removeSubjectAndSync, profile, onUpdateProfile }) {
   const { settings } = data;
   const [newSubject, setNewSubject] = useState('');
 
@@ -1498,6 +1763,50 @@ function SettingsPanel({ data, setData, addSubjectAndSync, removeSubjectAndSync 
             }`} />
           </button>
         </div>
+      </div>
+
+      {/* Community Profile & Privacy */}
+      <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/40 p-5 space-y-4">
+        <div>
+          <h3 className="font-semibold text-slate-900 dark:text-white">🤝 Community Profile & Privacy</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Configure how you appear on the study feed and Leaderboard.</p>
+        </div>
+
+        {profile ? (
+          <div className="space-y-4 pt-2">
+            <div>
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 block">Display Name</label>
+              <input
+                type="text"
+                value={profile.display_name}
+                onChange={e => onUpdateProfile({ displayName: e.target.value })}
+                placeholder="Your username..."
+                className="border border-slate-200 dark:border-slate-600 rounded-lg px-4 py-2.5 text-sm bg-transparent text-slate-900 dark:text-white w-full max-w-md"
+              />
+            </div>
+
+            <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-700/40 pt-4">
+              <div>
+                <span className="text-sm font-semibold text-slate-900 dark:text-white block">Share Study Hours on Leaderboard</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  When enabled, your study hours and active streak will be shown in the community leaderboard and check-in feed cards. If disabled, only the subjects you studied will be shared, and you won't be ranked on the leaderboard.
+                </span>
+              </div>
+              <button
+                onClick={() => onUpdateProfile({ isPublic: !profile.is_public })}
+                className={`relative w-12 h-7 rounded-full transition-colors flex-shrink-0 ml-4 ${
+                  profile.is_public ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'
+                }`}
+              >
+                <span className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform ${
+                  profile.is_public ? 'translate-x-5.5' : 'translate-x-0.5'
+                }`} />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-rose-500 dark:text-rose-400">Unable to load profile settings.</p>
+        )}
       </div>
     </div>
   );
@@ -1660,6 +1969,7 @@ export default function UPSCTracker() {
   const userId = user.id;
 
   const [data, setData] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showReset, setShowReset] = useState(false);
@@ -1693,6 +2003,22 @@ export default function UPSCTracker() {
     async function loadFromSupabase() {
       const result = await fetchAllUserData(userId);
       if (cancelled) return;
+
+      // Fetch Profile
+      const profileRes = await fetchProfile(userId);
+      if (!profileRes.error && !cancelled) {
+        let currentProfile = profileRes.data;
+        if (!currentProfile) {
+          const defaultName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'UPSC Aspirant';
+          const defaultAvatar = user.user_metadata?.avatar_url || null;
+          await updateProfile(userId, { displayName: defaultName, avatarUrl: defaultAvatar, isPublic: false });
+          const retryProfile = await fetchProfile(userId);
+          if (!retryProfile.error && !cancelled) {
+            currentProfile = retryProfile.data;
+          }
+        }
+        setProfile(currentProfile);
+      }
 
       if (result.error) {
         handleError(result.error);
@@ -1831,6 +2157,47 @@ export default function UPSCTracker() {
     }
   }, [userId]);
 
+  /* ═══════ PROFILE HANDLERS ═══════ */
+  const handleUpdateProfile = useCallback(async (updates) => {
+    setProfile(prev => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        display_name: 'displayName' in updates ? updates.displayName : prev.display_name,
+        avatar_url: 'avatarUrl' in updates ? updates.avatarUrl : prev.avatar_url,
+        is_public: 'isPublic' in updates ? updates.isPublic : prev.is_public,
+      };
+
+      flashSave('saving');
+      updateProfile(userId, updates).then(res => {
+        if (res.error) handleError(res.error);
+        else flashSave('saved');
+      });
+
+      return next;
+    });
+  }, [userId, flashSave, handleError]);
+
+  /* ── Helper: trigger daily summary upsert ── */
+  const triggerDailySummaryUpdate = useCallback(async (dayNumber, daysState) => {
+    const day = daysState[dayNumber];
+    if (!day) return;
+
+    const totalHours = day.tasks.reduce((s, t) => s + (t.actualHours || 0), 0);
+    const activeSubjects = [...new Set(day.tasks.filter(t => t.actualHours > 0).map(t => t.subject))];
+
+    // Calculate current streak
+    let streakCount = 0;
+    for (let d = 30; d >= 1; d--) {
+      const h = daysState[d]?.tasks.reduce((s, t) => s + (t.actualHours || 0), 0) || 0;
+      if (h > 0) streakCount++;
+      else if (streakCount > 0) break;
+    }
+
+    const todayDate = todayISO(); // YYYY-MM-DD
+    await upsertDailySummary(userId, dayNumber, todayDate, totalHours, activeSubjects, streakCount);
+  }, [userId]);
+
   /* ═══════ DEBOUNCED SUPABASE SAVES ═══════ */
 
   // Debounced save for day tasks (fires 500ms after last change)
@@ -1844,7 +2211,7 @@ export default function UPSCTracker() {
       if (result.data && result.data.length > 0) {
         setData(prev => {
           if (!prev) return prev;
-          return {
+          const next = {
             ...prev,
             days: {
               ...prev.days,
@@ -1854,6 +2221,13 @@ export default function UPSCTracker() {
               },
             },
           };
+          triggerDailySummaryUpdate(dayNumber, next.days);
+          return next;
+        });
+      } else {
+        setData(prev => {
+          if (prev) triggerDailySummaryUpdate(dayNumber, prev.days);
+          return prev;
         });
       }
     }
@@ -2121,13 +2495,15 @@ export default function UPSCTracker() {
       case 'dashboard': return <Dashboard data={data} setData={setDataWithSync} onImportJSON={handleImportJSON} />;
       case 'daysheet':  return <DaySheet data={data} setData={setDataWithSync} />;
       case 'summary':   return <PeriodSummary data={data} />;
+      case 'community': return <CommunityPanel />;
       case 'mocks':     return <MockAnalysis data={data} setData={setDataWithSync}
                            addMockAndSync={addMockAndSync} removeMockAndSync={removeMockAndSync} />;
       case 'ca':        return <CurrentAffairsLog data={data} setData={setDataWithSync}
                            addCAAndSync={addCAAndSync} removeCAAndSync={removeCAAndSync}
                            toggleRevisedAndSync={toggleRevisedAndSync} markAllRevisedAndSync={markAllRevisedAndSync} />;
       case 'settings':  return <SettingsPanel data={data} setData={setDataWithSync}
-                           addSubjectAndSync={addSubjectAndSync} removeSubjectAndSync={removeSubjectAndSync} />;
+                           addSubjectAndSync={addSubjectAndSync} removeSubjectAndSync={removeSubjectAndSync}
+                           profile={profile} onUpdateProfile={handleUpdateProfile} />;
       default:          return <Dashboard data={data} setData={setDataWithSync} onImportJSON={handleImportJSON} />;
     }
   };
