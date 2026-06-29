@@ -1,4 +1,4 @@
-# 🎯 UPSC PrepSheet — 30-Day Tracker
+# 🎯 UPSC/SPSC PrepSheet — 30-Day Tracker
  
 A full-featured, offline-first React web app for UPSC Prelims preparation. Track daily study hours, mock tests, current affairs, and personal wellbeing — all stored locally in your browser. No account, no server, no data leaving your device.
  
@@ -111,37 +111,7 @@ upsc-tracker/
 ```
  
 ---
- 
-## 🚀 Getting Started
- 
-### Prerequisites
-- Node.js 18 or above
-- npm or yarn
-### Installation
- 
-```bash
-# Clone the repo
-git clone https://github.com/yourname/upsc-tracker.git
-cd upsc-tracker
- 
-# Install dependencies
-npm install
- 
-# Start development server
-npm run dev
-```
- 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
- 
-### Build for Production
- 
-```bash
-npm run build
-```
- 
-Output goes to the `dist/` folder. You can host it on GitHub Pages, Netlify, Vercel, or any static host — for free.
- 
----
+
  
 ## 📱 Responsive Design
  
@@ -219,15 +189,11 @@ Targets can be customised per subject in **Settings**.
  
 ## 🙌 Credits
  
-Built from scratch based on the **UPSC PrepSheet V2.0** Excel tracker concept, designed by an ex-UPSC aspirant. Converted to a full React web app for better usability across devices.
+Designed and built by an ex-UPSC aspirant. A full React web app for better usability across devices.
  
 ---
  
 ## 📄 License
  
-MIT License — free to use, modify, and share. If you improve it, consider sharing it back with the UPSC community.
- 
 ---
- 
-> *"Success is the sum of small efforts, repeated day in and day out."*
 > Best of luck with your preparation. 🇮🇳

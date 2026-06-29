@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════
-//  UPSC PRELIMS 2026 — 30-Day Prep Tracker
+//  PRELIMS  — 30-Day Prep Tracker
 //  React + Recharts + Tailwind CSS v4
 // ═══════════════════════════════════════════════════════════════
 
@@ -91,7 +91,7 @@ function createDefaultDays(subjects) {
 function createInitialState() {
   return {
     settings: {
-      examDate: '2026-07-26',
+      examDate: '2027-05-23',
       periodName: '30-Day Sprint',
       subjects: [...DEFAULT_SUBJECTS],
       showWellbeing: true,
@@ -333,7 +333,7 @@ function Dashboard({ data, setData }) {
   /* ── Handlers ── */
   const copySummary = useCallback(() => {
     const lines = [
-      `📊 ${settings.periodName} — UPSC Prelims 2026`,
+      `📊 ${settings.periodName} — UPSC/SPSC Prelims`,
       `📅 Date: ${new Date().toLocaleDateString('en-IN', { dateStyle: 'long' })}`,
       daysLeft != null ? `⏳ Days Left: ${daysLeft}` : '',
       `🔥 Streak: ${streak} day${streak !== 1 ? 's' : ''}`,
@@ -1551,7 +1551,7 @@ function Footer() {
 
           {/* Right — tech stack note */}
           <p className="text-xs text-slate-400 dark:text-slate-500 text-center sm:text-right">
-            UPSC Prelims Prep Tracker &nbsp;·&nbsp; Built with React + Recharts
+            UPSC/SPSC Prelims Prep Tracker &nbsp;·&nbsp; Built with React + Recharts
           </p>
 
         </div>
@@ -1613,7 +1613,7 @@ export default function UPSCTracker() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-lg md:text-xl font-bold tracking-tight">{data.settings.periodName || 'UPSC Prep Tracker'}</h1>
-            <p className="text-indigo-200 text-xs md:text-sm">UPSC Prelims 2026</p>
+            <p className="text-indigo-200 text-xs md:text-sm">UPSC/SPSC Prelims</p>
           </div>
           <button
             onClick={toggleDark}
