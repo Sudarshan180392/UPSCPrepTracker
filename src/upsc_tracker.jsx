@@ -477,6 +477,14 @@ function Dashboard({ data, setData, onImportJSON }) {
 
   return (
     <div className="space-y-6">
+      {/* Mobile-only Quote Banner */}
+      <div className="block lg:hidden bg-indigo-50/40 dark:bg-indigo-950/15 border border-indigo-100/40 dark:border-indigo-900/20 rounded-2xl p-4 text-center">
+        <p className="text-sm italic text-indigo-700 dark:text-indigo-300 font-medium leading-relaxed">
+          "Don’t see others doing better than you, beat your own records every day because success is a fight between you and yourself."
+        </p>
+        <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 block mt-1.5">— Chandrasekhar Azad</span>
+      </div>
+
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard icon="📚" label="Total Hours" value={totalHours.toFixed(1) + 'h'} sub={`${activeDays} active days`} color="indigo" />
@@ -571,6 +579,39 @@ function Dashboard({ data, setData, onImportJSON }) {
 /* ═══════════════════════════════════════════════════════════════
    DAY SHEET TAB
    ═══════════════════════════════════════════════════════════════ */
+
+const DAILY_QUOTES = {
+  1: "Don’t take rest after your first victory because if you fail in second, more lips are waiting to say that your first victory was just luck.-A. P. J. Abdul Kalam",
+  2: "It always seems impossible until it's done. — Nelson Mandela",
+  3: "The secret of getting ahead is getting started. — Mark Twain",
+  4: "Quality is not an act, it is a habit. — Aristotle",
+  5: "Don't watch the clock; do what it does. Keep going. — Sam Levenson",
+  6: "The only limit to our realization of tomorrow is our doubts of today. — Franklin D. Roosevelt",
+  7: "Focus on being productive instead of busy. — Tim Ferriss",
+  8: "The way to get started is to quit talking and begin doing. — Walt Disney",
+  9: "There are no shortcuts to any place worth going. — Beverly Sills",
+  10: "You don't have to be great to start, but you have to start to be great. — Zig Ziglar",
+  11: "A river cuts through rock, not because of its power, but because of its persistence. — James N. Watkins",
+  12: "Our greatest weakness lies in giving up. — Thomas A. Edison",
+  13: "Believe you can and you're halfway there. — Theodore Roosevelt",
+  14: "The beautiful thing about learning is that no one can take it away from you. — B.B. King",
+  15: "You are halfway through your 30-day journey! Keep pushing forward.",
+  16: "Continuous improvement is better than delayed perfection. — Mark Twain",
+  17: "The expert in anything was once a beginner. — Helen Hayes",
+  18: "It is during our darkest moments that we must focus to see the light. — Aristotle",
+  19: "Small daily improvements over time lead to stunning results. — Robin Sharma",
+  20: "Only 10 days left! Consistency is the key to unlocking your potential.",
+  21: "Do not wait for opportunity. Create it.",
+  22: "Action is the foundational key to all success. — Pablo Picasso",
+  23: "Your talent determines what you can do. Your motivation determines how much you are willing to do. — Lou Holtz",
+  24: "Well begun is half done. — Aristotle",
+  25: "Energy and persistence conquer all things. — Benjamin Franklin",
+  26: "The best way to predict the future is to create it. — Abraham Lincoln",
+  27: "Hard work beats talent when talent doesn't work hard. — Tim Notke",
+  28: "Success is not final; failure is not fatal: It is the courage to continue that counts. — Winston Churchill",
+  29: "One final push. You are almost at the finish line!",
+  30: "Congratulations on completing the 30-day track! Excellence is a habit."
+};
 
 function DaySheet({ data, setData }) {
   const [currentDay, setCurrentDay] = useState(1);
@@ -685,6 +726,15 @@ function DaySheet({ data, setData }) {
           →
         </button>
       </div>
+
+      {/* Daily Quote Banner */}
+      {DAILY_QUOTES[currentDay] && (
+        <div className="bg-indigo-50/40 dark:bg-indigo-950/15 border border-indigo-100/40 dark:border-indigo-900/20 rounded-2xl p-4 text-center">
+          <p className="text-sm italic text-indigo-700 dark:text-indigo-300 font-medium">
+            "{DAILY_QUOTES[currentDay]}"
+          </p>
+        </div>
+      )}
 
       {/* Day selector pills */}
       <div className="overflow-x-auto scrollbar-thin pb-1">
@@ -2221,7 +2271,7 @@ export default function UPSCTracker() {
 
   /* ═══════ DEBOUNCED SUPABASE SAVES ═══════ */
 
-  // Debounced save for day tasks (fires 500ms after last change)
+  // Debounced save for day tasks (fires 3000ms after last change)
   const debouncedSaveTasks = useDebouncedCallback(async (dayNumber, tasks) => {
     flashSave('saving');
     const result = await upsertDayTasks(userId, dayNumber, tasks);
@@ -2533,11 +2583,23 @@ export default function UPSCTracker() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
       {/* Header */}
       <header className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 text-white px-4 md:px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div>
             <h1 className="text-lg md:text-xl font-bold tracking-tight">{data.settings.periodName || 'UPSC Prep Tracker'}</h1>
             <p className="text-indigo-200 text-xs md:text-sm">UPSC/SPSC Prep Tracker</p>
           </div>
+
+          {activeTab === 'dashboard' && (
+            <div className="hidden lg:block flex-1 max-w-xl mx-4 text-center bg-white/10 px-4 py-2 rounded-xl backdrop-blur-sm border border-white/5">
+              <p className="text-xs italic text-indigo-100 font-medium leading-relaxed">
+                "Don’t see others doing better than you, beat your own records every day because success is a fight between you and yourself."
+              </p>
+              <span className="text-[10px] font-bold tracking-wider text-amber-300 uppercase block mt-1">
+                — Chandrasekhar Azad
+              </span>
+            </div>
+          )}
+
           <div className="flex items-center gap-3">
             <SaveIndicator status={saveStatus} />
             <button
