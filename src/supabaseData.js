@@ -187,16 +187,24 @@ export async function upsertDayTasks(userId, dayNumber, tasks) {
     // Insert new tasks
     if (tasks.length === 0) return { data: [], error: null }
 
-    const rows = tasks.map((t, i) => ({
-      user_id: userId,
-      day_number: dayNumber,
-      sort_order: i,
-      subject: t.subject || '',
-      topic: t.topic || '',
-      target_hours: t.targetHours || 0,
-      actual_hours: t.actualHours || 0,
-      notes: t.notes || '',
-    }))
+    const rows = tasks.map((t, i) => {
+      const row = {
+        user_id: userId,
+        day_number: dayNumber,
+        sort_order: i,
+        subject: t.subject || '',
+        topic: t.topic || '',
+        target_hours: t.targetHours || 0,
+        actual_hours: t.actualHours || 0,
+        notes: t.notes || '',
+      };
+      // Retain task ID if it is a valid UUID to prevent focus loss in React UI on auto-save
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (t.id && uuidRegex.test(t.id)) {
+        row.id = t.id;
+      }
+      return row;
+    });
 
     const { data, error } = await supabase
       .from('day_tasks')

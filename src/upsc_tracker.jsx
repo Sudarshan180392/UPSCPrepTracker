@@ -49,7 +49,17 @@ const TABS = [
 
 /* ─────────────────────── Utilities ─────────────────────── */
 
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const uid = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 
 function formatTimer(sec) {
   const h = Math.floor(sec / 3600);
@@ -85,7 +95,7 @@ function createDefaultDays(subjects) {
   for (let i = 1; i <= 30; i++) {
     days[i] = {
       tasks: subjects.map((s, j) => ({
-        id: `d${i}_t${j}_${uid()}`,
+        id: uid(),
         subject: s,
         topic: '',
         targetHours: 0,
@@ -123,7 +133,7 @@ function loadState() {
         if (!parsed.days[i]) {
           parsed.days[i] = {
             tasks: (parsed.settings?.subjects || DEFAULT_SUBJECTS).map((s, j) => ({
-              id: `d${i}_t${j}_${uid()}`, subject: s, topic: '', targetHours: 0, actualHours: 0, notes: '',
+              id: uid(), subject: s, topic: '', targetHours: 0, actualHours: 0, notes: '',
             })),
             wellbeing: { sleepHours: 7, waterLitres: 2, exercise: false, mood: 2 },
           };
@@ -2045,7 +2055,7 @@ export default function UPSCTracker() {
           const dbDay = result.days[d];
           appData.days[d] = {
             tasks: dbDay?.tasks?.length > 0 ? dbDay.tasks : subjects.map((s, j) => ({
-              id: `d${d}_t${j}_${uid()}`, subject: s, topic: '', targetHours: 0, actualHours: 0, notes: '',
+              id: uid(), subject: s, topic: '', targetHours: 0, actualHours: 0, notes: '',
             })),
             wellbeing: dbDay?.wellbeing || { sleepHours: 7, waterLitres: 2, exercise: false, mood: 2 },
           };
@@ -2097,7 +2107,7 @@ export default function UPSCTracker() {
         if (!parsed.days[i]) {
           parsed.days[i] = {
             tasks: (parsed.settings?.subjects || DEFAULT_SUBJECTS).map((s, j) => ({
-              id: `d${i}_t${j}_${uid()}`, subject: s, topic: '', targetHours: 0, actualHours: 0, notes: '',
+              id: uid(), subject: s, topic: '', targetHours: 0, actualHours: 0, notes: '',
             })),
             wellbeing: { sleepHours: 7, waterLitres: 2, exercise: false, mood: 2 },
           };
@@ -2128,7 +2138,7 @@ export default function UPSCTracker() {
           const dbDay = freshLoad.days[d];
           appData.days[d] = {
             tasks: dbDay?.tasks?.length > 0 ? dbDay.tasks : subjects.map((s, j) => ({
-              id: `d${d}_t${j}_${uid()}`, subject: s, topic: '', targetHours: 0, actualHours: 0, notes: '',
+              id: uid(), subject: s, topic: '', targetHours: 0, actualHours: 0, notes: '',
             })),
             wellbeing: dbDay?.wellbeing || { sleepHours: 7, waterLitres: 2, exercise: false, mood: 2 },
           };
@@ -2158,7 +2168,14 @@ export default function UPSCTracker() {
   }, [userId]);
 
   /* ═══════ PROFILE HANDLERS ═══════ */
-  const handleUpdateProfile = useCallback(async (updates) => {
+  const debouncedUpdateProfile = useDebouncedCallback(async (updates) => {
+    flashSave('saving');
+    const res = await updateProfile(userId, updates);
+    if (res.error) handleError(res.error);
+    else flashSave('saved');
+  }, 3000);
+
+  const handleUpdateProfile = useCallback((updates) => {
     setProfile(prev => {
       if (!prev) return prev;
       const next = {
@@ -2168,15 +2185,19 @@ export default function UPSCTracker() {
         is_public: 'isPublic' in updates ? updates.isPublic : prev.is_public,
       };
 
-      flashSave('saving');
-      updateProfile(userId, updates).then(res => {
-        if (res.error) handleError(res.error);
-        else flashSave('saved');
-      });
+      if ('displayName' in updates) {
+        debouncedUpdateProfile(updates);
+      } else {
+        flashSave('saving');
+        updateProfile(userId, updates).then(res => {
+          if (res.error) handleError(res.error);
+          else flashSave('saved');
+        });
+      }
 
       return next;
     });
-  }, [userId, flashSave, handleError]);
+  }, [userId, flashSave, handleError, debouncedUpdateProfile]);
 
   /* ── Helper: trigger daily summary upsert ── */
   const triggerDailySummaryUpdate = useCallback(async (dayNumber, daysState) => {
@@ -2231,7 +2252,7 @@ export default function UPSCTracker() {
         });
       }
     }
-  }, 500);
+  }, 3000);
 
   // Debounced save for wellbeing
   const debouncedSaveWellbeing = useDebouncedCallback(async (dayNumber, wellbeing) => {
@@ -2239,7 +2260,7 @@ export default function UPSCTracker() {
     const result = await upsertWellbeing(userId, dayNumber, wellbeing);
     if (result.error) handleError(result.error);
     else flashSave('saved');
-  }, 500);
+  }, 3000);
 
   // Debounced save for settings
   const debouncedSaveSettings = useDebouncedCallback(async (settings) => {
@@ -2247,7 +2268,7 @@ export default function UPSCTracker() {
     const result = await upsertSettings(userId, settings);
     if (result.error) handleError(result.error);
     else flashSave('saved');
-  }, 500);
+  }, 3000);
 
   /* ═══════ WRAPPED setData THAT TRIGGERS SUPABASE SAVES ═══════ */
 
@@ -2418,7 +2439,7 @@ export default function UPSCTracker() {
         const dbDay = freshLoad.days[d];
         appData.days[d] = {
           tasks: dbDay?.tasks?.length > 0 ? dbDay.tasks : subjects.map((s, j) => ({
-            id: `d${d}_t${j}_${uid()}`, subject: s, topic: '', targetHours: 0, actualHours: 0, notes: '',
+            id: uid(), subject: s, topic: '', targetHours: 0, actualHours: 0, notes: '',
           })),
           wellbeing: dbDay?.wellbeing || { sleepHours: 7, waterLitres: 2, exercise: false, mood: 2 },
         };
@@ -2442,7 +2463,7 @@ export default function UPSCTracker() {
           ...newDays[d],
           tasks: [
             ...newDays[d].tasks,
-            { id: `d${d}_new_${uid()}`, subject: trimmed, topic: '', targetHours: 0, actualHours: 0, notes: '' },
+            { id: uid(), subject: trimmed, topic: '', targetHours: 0, actualHours: 0, notes: '' },
           ],
         };
       }
